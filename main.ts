@@ -106,7 +106,9 @@ export default class ConfigManagerPlugin extends Plugin {
     this.settings = {
       configRootFolder: loadedSettings.configRootFolder || DEFAULT_SETTINGS.configRootFolder,
       tools: mergeToolSettings(loadedSettings),
-      customSources: (loadedSettings.customSources ?? []).filter(isValidCustomSource)
+      customSources: (loadedSettings.customSources ?? [])
+        .filter(isValidCustomSource)
+        .map((source) => ({ ...source, id: toSourceSlug(source.name) }))
     };
 
     if (loadedSettings.currentMachineName !== undefined || loadedSettings.syncSourcesText !== undefined) {
@@ -516,7 +518,9 @@ class ConfigManagerSettingTab extends PluginSettingTab {
             .setPlaceholder('Name')
             .setValue(source.name)
             .onChange((value) => {
-              this.plugin.settings.customSources[index].name = value.trim();
+              const trimmed = value.trim();
+              this.plugin.settings.customSources[index].name = trimmed;
+              this.plugin.settings.customSources[index].id = toSourceSlug(trimmed);
               void this.plugin.saveSettings();
             });
         })
@@ -558,7 +562,7 @@ class ConfigManagerSettingTab extends PluginSettingTab {
           .setIcon('plus')
           .onClick(() => {
             this.plugin.settings.customSources.push({
-              id: generateSourceId(),
+              id: '',
               name: '',
               path: '',
               enabled: true
@@ -570,8 +574,13 @@ class ConfigManagerSettingTab extends PluginSettingTab {
   }
 }
 
-function generateSourceId(): string {
-  return `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+function toSourceSlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function isValidCustomSource(source: unknown): source is CustomConfigSource {
