@@ -1,0 +1,48 @@
+.ai-switch-view {
+  padding: 10px;
+}
+
+.ai-switch-machine,
+.ai-switch-path,
+.ai-switch-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.ai-switch-full-button {
+  margin: 10px 0;
+  width: 100%;
+}
+
+.ai-switch-tool {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 10px 0;
+}
+
+.ai-switch-tool-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.ai-switch-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-switch-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ai-switch-actions button {
+  flex: 1;
+}
+
+.ai-switch-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}

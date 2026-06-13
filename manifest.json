@@ -1,0 +1,10 @@
+{
+  "id": "ai-switch",
+  "name": "AI Switch",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Sync and prepare AI coding tool configurations for quick model switching.",
+  "author": "lizhifeng",
+  "authorUrl": "https://github.com/fengshuzi",
+  "isDesktopOnly": true
+}
