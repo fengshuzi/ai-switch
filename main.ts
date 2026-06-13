@@ -68,15 +68,15 @@ export default class ConfigManagerPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: 'open-ai-switch',
-      name: 'Open AI Switch',
+      id: 'open-view',
+      name: 'Open view',
       callback: () => {
         void this.activateView();
       }
     });
 
     this.addCommand({
-      id: 'sync-ai-switch-snapshots',
+      id: 'sync-config-snapshots',
       name: 'Sync config snapshots',
       callback: () => {
         void this.syncConfigSnapshots();
@@ -88,10 +88,6 @@ export default class ConfigManagerPlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => {
       void this.syncConfigSnapshots(false);
     });
-  }
-
-  onunload(): void {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_AI_SWITCH);
   }
 
   async loadSettings(): Promise<void> {
@@ -286,7 +282,7 @@ export default class ConfigManagerPlugin extends Plugin {
   private async removeLegacyPreviewFolder(rootFolder: string): Promise<void> {
     const previewFolder = this.app.vault.getAbstractFileByPath(`${rootFolder}/_preview`);
     if (previewFolder) {
-      await this.app.vault.delete(previewFolder, true);
+      await this.app.fileManager.trashFile(previewFolder);
     }
   }
 
@@ -298,7 +294,7 @@ export default class ConfigManagerPlugin extends Plugin {
       });
 
       for (const file of files) {
-        await this.app.vault.delete(file, true);
+        await this.app.fileManager.trashFile(file);
       }
     }
   }
@@ -329,9 +325,7 @@ class AISwitchView extends ItemView {
   }
 
   async refresh(): Promise<void> {
-    const container = this.containerEl.children[1];
-    if (!(container instanceof HTMLElement)) return;
-
+    const container = this.contentEl;
     container.empty();
     container.addClass('ai-switch-view');
 
@@ -420,8 +414,6 @@ class ConfigManagerSettingTab extends PluginSettingTab {
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-
-    containerEl.createEl('h2', { text: 'AI Switch Settings' });
 
     new Setting(containerEl)
       .setName('Config root folder')
