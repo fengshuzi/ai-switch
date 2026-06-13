@@ -116,7 +116,6 @@ export default class ConfigManagerPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
-    await this.syncConfigSnapshots(false);
     await this.refreshOpenViews();
   }
 
