@@ -1,7 +1,7 @@
 {
   "id": "ai-switch",
   "name": "AI Switch",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "minAppVersion": "1.7.2",
   "description": "Sync and prepare AI coding tool configurations for quick model switching.",
   "author": "lizhifeng",

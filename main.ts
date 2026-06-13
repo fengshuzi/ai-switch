@@ -8,11 +8,13 @@ const VIEW_TYPE_AI_SWITCH = 'ai-switch-view';
 interface ConfigManagerSettings {
   configRootFolder: string;
   tools: Record<ToolId, ToolConfig>;
+  customSources: CustomConfigSource[];
 }
 
 interface LegacyConfigManagerSettings {
   configRootFolder?: string;
   tools?: Record<ToolId, ToolConfig>;
+  customSources?: CustomConfigSource[];
   syncSourcesText?: string;
   currentMachineName?: string;
 }
@@ -30,9 +32,17 @@ interface ToolDefinition {
   defaultPath: string;
 }
 
-interface ManagedConfigSource {
-  toolName: string;
-  sourcePath: string;
+interface CustomConfigSource {
+  id: string;
+  name: string;
+  path: string;
+  enabled: boolean;
+}
+
+interface ConfigSource {
+  id: string;
+  name: string;
+  path: string;
 }
 
 const DEFAULT_SETTINGS: ConfigManagerSettings = {
@@ -41,7 +51,8 @@ const DEFAULT_SETTINGS: ConfigManagerSettings = {
     codex: { enabled: true, path: '~/.codex/config.toml' },
     claude: { enabled: true, path: '~/.claude/settings.json' },
     opencode: { enabled: true, path: '~/.config/opencode' }
-  }
+  },
+  customSources: []
 };
 
 const TOOL_DEFINITIONS: ToolDefinition[] = [
@@ -94,7 +105,8 @@ export default class ConfigManagerPlugin extends Plugin {
     const loadedSettings = Object.assign({}, await this.loadData()) as LegacyConfigManagerSettings;
     this.settings = {
       configRootFolder: loadedSettings.configRootFolder || DEFAULT_SETTINGS.configRootFolder,
-      tools: mergeToolSettings(loadedSettings)
+      tools: mergeToolSettings(loadedSettings),
+      customSources: (loadedSettings.customSources ?? []).filter(isValidCustomSource)
     };
 
     if (loadedSettings.currentMachineName !== undefined || loadedSettings.syncSourcesText !== undefined) {
@@ -136,7 +148,7 @@ export default class ConfigManagerPlugin extends Plugin {
 
     const rootFolder = normalizeFolderPath(this.settings.configRootFolder);
     const machineName = getCurrentMachineName();
-    const sources = getEnabledSources(this.settings.tools);
+    const sources = this.getAllEnabledSources();
 
     if (!rootFolder || !machineName) {
       if (showNotice) new Notice('Unable to detect config snapshot target.');
@@ -152,22 +164,23 @@ export default class ConfigManagerPlugin extends Plugin {
     let missingCount = 0;
 
     for (const source of sources) {
-      if (!fs.existsSync(source.sourcePath)) {
+      const sourcePath = expandHomePath(source.path);
+      if (!fs.existsSync(sourcePath)) {
         missingCount++;
         continue;
       }
 
-      const stat = fs.statSync(source.sourcePath);
+      const stat = fs.statSync(sourcePath);
       const files = stat.isDirectory()
-        ? collectConfigFiles(source.sourcePath)
-        : [source.sourcePath];
+        ? collectConfigFiles(sourcePath)
+        : [sourcePath];
 
       for (const filePath of files) {
         if (!isSupportedConfigFile(filePath)) continue;
 
         const sourceContent = fs.readFileSync(filePath, 'utf8');
-        const fileName = stat.isDirectory() ? relative(source.sourcePath, filePath) : basename(filePath);
-        const targetPath = normalizePath(`${rootFolder}/${machineName}/${source.toolName}/${fileName}.md`);
+        const fileName = stat.isDirectory() ? relative(sourcePath, filePath) : basename(filePath);
+        const targetPath = normalizePath(`${rootFolder}/${machineName}/${source.id}/${fileName}.md`);
         const content = toMarkdownSnapshot(fileName, filePath, sourceContent);
         await this.writeVaultFile(targetPath, content);
         syncedCount++;
@@ -184,21 +197,20 @@ export default class ConfigManagerPlugin extends Plugin {
     await this.refreshOpenViews();
   }
 
-  async applyToolSnapshot(toolId: ToolId): Promise<void> {
+  async applyToolSnapshot(sourceId: string): Promise<void> {
     if (!Platform.isDesktop) {
       new Notice('Applying config files is only available on desktop.');
       return;
     }
 
-    const tool = TOOL_DEFINITIONS.find((definition) => definition.id === toolId);
-    const toolConfig = this.settings.tools[toolId];
-    if (!tool || !toolConfig.enabled) return;
+    const source = this.getSource(sourceId);
+    if (!source) return;
 
-    const localPath = expandHomePath(toolConfig.path || tool.defaultPath);
-    const snapshotFile = this.getToolSnapshotFile(toolId);
+    const localPath = expandHomePath(source.path);
+    const snapshotFile = this.getToolSnapshotFile(sourceId);
 
     if (!snapshotFile) {
-      new Notice(`No ${tool.name} snapshot found for this machine.`);
+      new Notice(`No ${source.name} snapshot found for this machine.`);
       return;
     }
 
@@ -209,16 +221,16 @@ export default class ConfigManagerPlugin extends Plugin {
       return;
     }
 
-    new ConfirmApplyModal(this.app, tool.name, snapshotFile.path, localPath, async () => {
+    new ConfirmApplyModal(this.app, source.name, snapshotFile.path, localPath, async () => {
       await this.writeLocalConfig(localPath, configContent);
-      new Notice(`Applied ${tool.name} config.`);
+      new Notice(`Applied ${source.name} config.`);
     }).open();
   }
 
-  getToolSnapshotFile(toolId: ToolId): TFile | null {
+  getToolSnapshotFile(sourceId: string): TFile | null {
     const rootFolder = normalizeFolderPath(this.settings.configRootFolder);
     const machineName = getCurrentMachineName();
-    const toolFolderPath = `${rootFolder}/${machineName}/${toolId}`;
+    const toolFolderPath = `${rootFolder}/${machineName}/${sourceId}`;
     const files = this.app.vault.getFiles()
       .filter((file) => file.path.startsWith(`${toolFolderPath}/`) && file.extension === 'md')
       .sort((a, b) => a.path.localeCompare(b.path));
@@ -228,6 +240,44 @@ export default class ConfigManagerPlugin extends Plugin {
 
   getEnabledTools(): ToolDefinition[] {
     return TOOL_DEFINITIONS.filter((tool) => this.settings.tools[tool.id].enabled);
+  }
+
+  getAllEnabledSources(): ConfigSource[] {
+    const builtin: ConfigSource[] = TOOL_DEFINITIONS
+      .filter((tool) => this.settings.tools[tool.id].enabled)
+      .map((tool) => ({
+        id: tool.id,
+        name: tool.name,
+        path: this.settings.tools[tool.id].path || tool.defaultPath
+      }));
+
+    const custom: ConfigSource[] = this.settings.customSources
+      .filter((source) => source.enabled && source.name.trim() && source.path.trim())
+      .map((source) => ({
+        id: source.id,
+        name: source.name.trim(),
+        path: source.path.trim()
+      }));
+
+    return [...builtin, ...custom];
+  }
+
+  getSource(id: string): ConfigSource | null {
+    const builtin = TOOL_DEFINITIONS.find((tool) => tool.id === id);
+    if (builtin) {
+      return {
+        id: builtin.id,
+        name: builtin.name,
+        path: this.settings.tools[builtin.id].path || builtin.defaultPath
+      };
+    }
+
+    const custom = this.settings.customSources.find((source) => source.id === id);
+    if (custom) {
+      return { id: custom.id, name: custom.name, path: custom.path };
+    }
+
+    return null;
   }
 
   getCurrentMachineName(): string {
@@ -286,9 +336,9 @@ export default class ConfigManagerPlugin extends Plugin {
     }
   }
 
-  private async removeLegacyRawSnapshots(rootFolder: string, machineName: string, sources: ManagedConfigSource[]): Promise<void> {
+  private async removeLegacyRawSnapshots(rootFolder: string, machineName: string, sources: ConfigSource[]): Promise<void> {
     for (const source of sources) {
-      const toolFolderPath = `${rootFolder}/${machineName}/${source.toolName}`;
+      const toolFolderPath = `${rootFolder}/${machineName}/${source.id}`;
       const files = this.app.vault.getFiles().filter((file) => {
         return file.path.startsWith(`${toolFolderPath}/`) && isSupportedConfigFile(file.path);
       });
@@ -337,22 +387,21 @@ class AISwitchView extends ItemView {
       void this.plugin.syncConfigSnapshots();
     };
 
-    const tools = this.plugin.getEnabledTools();
-    if (tools.length === 0) {
-      container.createDiv({ cls: 'ai-switch-empty', text: 'Enable at least one tool in settings.' });
+    const sources = this.plugin.getAllEnabledSources();
+    if (sources.length === 0) {
+      container.createDiv({ cls: 'ai-switch-empty', text: 'Enable at least one source in settings.' });
       return;
     }
 
-    tools.forEach((tool) => this.renderTool(container, tool));
+    sources.forEach((source) => this.renderSource(container, source));
   }
 
-  private renderTool(container: HTMLElement, tool: ToolDefinition): void {
-    const config = this.plugin.settings.tools[tool.id];
-    const snapshotFile = this.plugin.getToolSnapshotFile(tool.id);
+  private renderSource(container: HTMLElement, source: ConfigSource): void {
+    const snapshotFile = this.plugin.getToolSnapshotFile(source.id);
     const toolEl = container.createDiv({ cls: 'ai-switch-tool' });
 
-    toolEl.createDiv({ cls: 'ai-switch-tool-title', text: tool.name });
-    toolEl.createDiv({ cls: 'ai-switch-path', text: config.path || tool.defaultPath });
+    toolEl.createDiv({ cls: 'ai-switch-tool-title', text: source.name });
+    toolEl.createDiv({ cls: 'ai-switch-path', text: source.path });
     toolEl.createDiv({ cls: 'ai-switch-path', text: snapshotFile ? snapshotFile.path : 'No snapshot for current machine' });
 
     const actionsEl = toolEl.createDiv({ cls: 'ai-switch-actions' });
@@ -364,7 +413,7 @@ class AISwitchView extends ItemView {
     const applyButton = actionsEl.createEl('button', { text: 'Apply to local' });
     applyButton.disabled = snapshotFile === null;
     applyButton.onclick = () => {
-      void this.plugin.applyToolSnapshot(tool.id);
+      void this.plugin.applyToolSnapshot(source.id);
     };
   }
 }
@@ -456,7 +505,83 @@ class ConfigManagerSettingTab extends PluginSettingTab {
             });
         });
     });
+
+    new Setting(containerEl)
+      .setName('Custom config sources')
+      .setDesc('Add custom config files or folders by name and path.');
+
+    this.plugin.settings.customSources.forEach((source, index) => {
+      const setting = new Setting(containerEl)
+        .addText((text) => {
+          text
+            .setPlaceholder('Name')
+            .setValue(source.name)
+            .onChange((value) => {
+              this.plugin.settings.customSources[index].name = value.trim();
+              void this.plugin.saveSettings();
+            });
+        })
+        .addText((text) => {
+          text
+            .setPlaceholder('~/.config/tool')
+            .setValue(source.path)
+            .onChange((value) => {
+              this.plugin.settings.customSources[index].path = value.trim();
+              void this.plugin.saveSettings();
+            });
+        })
+        .addToggle((toggle) => {
+          toggle
+            .setValue(source.enabled)
+            .onChange((value) => {
+              this.plugin.settings.customSources[index].enabled = value;
+              void this.plugin.saveSettings();
+            });
+        })
+        .addExtraButton((button) => {
+          button
+            .setIcon('trash')
+            .setTooltip('Remove')
+            .onClick(() => {
+              this.plugin.settings.customSources.splice(index, 1);
+              void this.plugin.saveSettings();
+              this.display();
+            });
+        });
+
+      setting.infoEl.remove();
+    });
+
+    new Setting(containerEl)
+      .addButton((button) => {
+        button
+          .setButtonText('Add custom source')
+          .setIcon('plus')
+          .onClick(() => {
+            this.plugin.settings.customSources.push({
+              id: generateSourceId(),
+              name: '',
+              path: '',
+              enabled: true
+            });
+            void this.plugin.saveSettings();
+            this.display();
+          });
+      });
   }
+}
+
+function generateSourceId(): string {
+  return `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function isValidCustomSource(source: unknown): source is CustomConfigSource {
+  if (typeof source !== 'object' || source === null) return false;
+  const record = source as Record<string, unknown>;
+  return typeof record.id === 'string'
+    && typeof record.name === 'string'
+    && typeof record.path === 'string'
+    && typeof record.enabled === 'boolean';
 }
 
 function normalizeFolderPath(path: string): string {
@@ -480,15 +605,6 @@ function toMachineFolderName(name: string): string {
     .replace(/[^a-z0-9_-]+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_+|_+$/g, '');
-}
-
-function getEnabledSources(tools: Record<ToolId, ToolConfig>): ManagedConfigSource[] {
-  return TOOL_DEFINITIONS
-    .filter((tool) => tools[tool.id].enabled)
-    .map((tool) => ({
-      toolName: tool.id,
-      sourcePath: expandHomePath(tools[tool.id].path || tool.defaultPath)
-    }));
 }
 
 function mergeToolSettings(settings: LegacyConfigManagerSettings): Record<ToolId, ToolConfig> {

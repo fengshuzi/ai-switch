@@ -8,6 +8,7 @@ Sync AI coding tool configuration snapshots into your vault. This plugin starts 
 - Automatically groups snapshots by machine and tool folder.
 - Syncs when the plugin loads, when settings change, or when the ribbon button is clicked.
 - Provides a small sidebar for syncing snapshots and applying a note snapshot back to local config.
+- Supports custom config sources: add any config file or folder by name and path, alongside the built-in Codex / Claude / OpenCode presets.
 - Read-only for system config directories; it only reads local files and writes snapshots into the vault.
 
 ## Usage
@@ -29,6 +30,10 @@ Config Manager/
     └── opencode/
         └── opencode.json.md
 ```
+
+Custom config sources:
+
+In **Settings → AI Switch → Custom config sources**, click **Add custom source** and enter a name and path (supports `~`, files or folders, `.toml` / `.json` / `.yaml` / `.yml`). Each source syncs the same way as the built-in tools and can be toggled or removed.
 
 Default tool paths:
 
