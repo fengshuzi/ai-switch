@@ -50,7 +50,7 @@ const DEFAULT_SETTINGS: ConfigManagerSettings = {
   tools: {
     codex: { enabled: true, path: '~/.codex/config.toml' },
     claude: { enabled: true, path: '~/.claude/settings.json' },
-    opencode: { enabled: true, path: '~/.config/opencode' }
+    opencode: { enabled: true, path: '~/.config/opencode/opencode.json' }
   },
   customSources: []
 };
@@ -58,10 +58,10 @@ const DEFAULT_SETTINGS: ConfigManagerSettings = {
 const TOOL_DEFINITIONS: ToolDefinition[] = [
   { id: 'codex', name: 'Codex', defaultPath: '~/.codex/config.toml' },
   { id: 'claude', name: 'Claude', defaultPath: '~/.claude/settings.json' },
-  { id: 'opencode', name: 'OpenCode', defaultPath: '~/.config/opencode' }
+  { id: 'opencode', name: 'OpenCode', defaultPath: '~/.config/opencode/opencode.json' }
 ];
 
-const SUPPORTED_CONFIG_EXTENSIONS = new Set(['json', 'toml', 'yaml', 'yml']);
+const SUPPORTED_CONFIG_EXTENSIONS = new Set(['json', 'toml', 'yaml', 'yml', 'py', 'sh', 'md', 'java', 'php']);
 
 export default class ConfigManagerPlugin extends Plugin {
   settings: ConfigManagerSettings = DEFAULT_SETTINGS;
