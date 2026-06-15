@@ -179,9 +179,17 @@ export default class ConfigManagerPlugin extends Plugin {
       for (const filePath of files) {
         if (!isSupportedConfigFile(filePath)) continue;
 
-        const sourceContent = fs.readFileSync(filePath, 'utf8');
+        const sourceMtime = (stat.isDirectory() ? fs.statSync(filePath) : stat).mtimeMs;
         const fileName = stat.isDirectory() ? relative(sourcePath, filePath) : basename(filePath);
         const targetPath = normalizePath(`${rootFolder}/${machineName}/${source.id}/${fileName}.md`);
+
+        const existingFile = this.app.vault.getAbstractFileByPath(targetPath);
+        if (existingFile instanceof TFile && existingFile.stat.mtime > sourceMtime) {
+          syncedCount++;
+          continue;
+        }
+
+        const sourceContent = fs.readFileSync(filePath, 'utf8');
         const content = toMarkdownSnapshot(fileName, filePath, sourceContent);
         await this.writeVaultFile(targetPath, content);
         syncedCount++;
