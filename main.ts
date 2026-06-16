@@ -46,7 +46,7 @@ interface ConfigSource {
 }
 
 const DEFAULT_SETTINGS: ConfigManagerSettings = {
-  configRootFolder: 'Config Manager',
+  configRootFolder: 'config',
   tools: {
     codex: { enabled: true, path: '~/.codex/config.toml' },
     claude: { enabled: true, path: '~/.claude/settings.json' },
@@ -349,7 +349,7 @@ export default class ConfigManagerPlugin extends Plugin {
     for (const source of sources) {
       const toolFolderPath = `${rootFolder}/${machineName}/${source.id}`;
       const files = this.app.vault.getFiles().filter((file) => {
-        return file.path.startsWith(`${toolFolderPath}/`) && isSupportedConfigFile(file.path);
+        return file.path.startsWith(`${toolFolderPath}/`) && !file.path.endsWith('.md') && isSupportedConfigFile(file.path);
       });
 
       for (const file of files) {
